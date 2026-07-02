@@ -1,0 +1,101 @@
+//@version=5
+indicator("Liquidity Void Predictor (LVP) - Definitive Fixed", overlay=true, max_boxes_count=500, max_labels_count=500)
+
+// --- INPUT INDICATORE ---
+minImbalancePercent = input.float(0.02, title="Dimensione Minima Vuoto (%)", tooltip="Percentuale minima della candela centrale per considerare il vuoto valido")
+magnetThreshold     = input.int(10, title="Soglia Attrazione (Candele)", tooltip="Numero di candele dopo le quali il magnete diventa critico")
+showFilledVoids     = input.bool(true, title="Mostra Vuoti Colmati", tooltip="Se disattivato, i vuoti colmati spariranno per ripulire il grafico")
+
+// --- VARIABILI DI STRUTTURA ---
+var box[] bullishVoids = array.new<box>()
+var box[] bearishVoids = array.new<box>()
+
+// --- IDENTIFICAZIONE LIQUIDITY VOID (FVG REALI A 3 CANDELE) ---
+isBullishVoid = low > high[2] and (low - high[2]) > (close * (minImbalancePercent / 100))
+isBearishVoid = high < low[2] and (low[2] - high) > (close * (minImbalancePercent / 100))
+
+// --- GESTIONE DEI VUOTI ATTIVI ---
+
+// 1. Creazione Vuoto Rialzista
+if isBullishVoid
+    topLevel = low
+    bottomLevel = high[2]
+    bx = box.new(left=bar_index[2], top=topLevel, right=bar_index, bottom=bottomLevel, 
+                 bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 50),
+                 text="LVP Bullish", text_color=color.green, text_size=size.small,
+                 text_valign="bottom", text_halign="right")
+    array.push(bullishVoids, bx)
+
+// 2. Creazione Vuoto Ribassista
+if isBearishVoid
+    topLevel = low[2]
+    bottomLevel = high
+    bx = box.new(left=bar_index[2], top=topLevel, right=bar_index, bottom=bottomLevel, 
+                 bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 50),
+                 text="LVP Bearish", text_color=color.red, text_size=size.small,
+                 text_valign="top", text_halign="right")
+    array.push(bearishVoids, bx)
+
+// --- AGGIORNAMENTO DINAMICO ---
+
+// Monitora vuoti rialzisti (Da colmare vs Colmati)
+if array.size(bullishVoids) > 0
+    for i = array.size(bullishVoids) - 1 to 0
+        bx = array.get(bullishVoids, i)
+        boxBottom = box.get_bottom(bx)
+        boxLeft = box.get_left(bx)
+        
+        // Estendi il vuoto aperto fino alla candela corrente
+        box.set_right(bx, bar_index)
+        voidAge = bar_index - boxLeft
+        
+        // Se supera la soglia tempo, diventa magnete critico
+        if voidAge >= magnetThreshold
+            box.set_bgcolor(bx, color.new(color.orange, 80))
+            box.set_border_color(bx, color.orange)
+            box.set_text(bx, "🧲 MAGNETE")
+            box.set_text_color(bx, color.orange)
+
+        // Il vuoto rialzista è COMPLETAMENTE colmato quando il minimo attuale rompe il fondo del box
+        if low <= boxBottom
+            if showFilledVoids
+                box.set_right(bx, bar_index) 
+                box.set_bgcolor(bx, color.new(color.gray, 95))
+                box.set_border_color(bx, color.new(color.gray, 80))
+                box.set_text(bx, "COLMATO")
+                box.set_text_color(bx, color.gray)
+            else
+                box.delete(bx)
+            // Rimosso dall'array in ogni caso: smette di essere aggiornato o controllato
+            array.remove(bullishVoids, i) 
+
+// Monitora vuoti ribassisti (Da colmare vs Colmati)
+if array.size(bearishVoids) > 0
+    for i = array.size(bearishVoids) - 1 to 0
+        bx = array.get(bearishVoids, i)
+        boxTop = box.get_top(bx)
+        boxLeft = box.get_left(bx)
+        
+        // Estendi il vuoto aperto fino alla candela corrente
+        box.set_right(bx, bar_index)
+        voidAge = bar_index - boxLeft
+        
+        // Se supera la soglia tempo, diventa magnete critico
+        if voidAge >= magnetThreshold
+            box.set_bgcolor(bx, color.new(color.orange, 80))
+            box.set_border_color(bx, color.orange)
+            box.set_text(bx, "🧲 MAGNETE")
+            box.set_text_color(bx, color.orange)
+
+        // Il vuoto ribassista è COMPLETAMENTE colmato quando il massimo attuale rompe il tetto del box
+        if high >= boxTop
+            if showFilledVoids
+                box.set_right(bx, bar_index) 
+                box.set_bgcolor(bx, color.new(color.gray, 95))
+                box.set_border_color(bx, color.new(color.gray, 80))
+                box.set_text(bx, "COLMATO")
+                box.set_text_color(bx, color.gray)
+            else
+                box.delete(bx)
+            // Rimosso dall'array in ogni caso: smette di essere aggiornato o controllato
+            array.remove(bearishVoids, i)
